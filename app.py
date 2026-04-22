@@ -90,34 +90,62 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ====================== PCLOUD CREDENTIALS - FINAL ATTEMPT ======================
-try:
-    PCLOUD_EMAIL = st.secrets["pcloud"]["email"]
-    PCLOUD_PASS  = st.secrets["pcloud"]["password"]
-    FOLDER_ID    = st.secrets["pcloud"]["folder_id"]
-    st.info("✅ Secrets loaded")
-except Exception as e:
-    st.error(f"❌ Secrets error: {e}")
+# ====================== GITHUB DB LOADING (Private Repo + Token) ======================
+full_code = st.query_params.get("code")
+if not full_code:
+    st.error("Missing code in the URL.")
     st.stop()
 
-# Try multiple login methods
-for method in ["getauth=1", ""]:
-    login_resp = requests.get("https://api.pcloud.com/login", params={
-        "username": PCLOUD_EMAIL,
-        "password": PCLOUD_PASS,
-        **({"getauth": 1} if "getauth" in method else {})
-    }).json()
-    
-    st.write(f"**Login attempt with {method or 'basic'}**:", login_resp)
-    
-    if login_resp.get("result") == 0:
-        token = login_resp.get("auth")
-        st.success("✅ Login successful!")
-        break
-else:
-    st.error("❌ All login attempts failed. pCloud may require app-specific token.")
+coach_code = full_code.split('-')[0] if '-' in full_code else full_code
+db_filename = f"{coach_code}.db"
+
+# Get GitHub config from secrets
+try:
+    GITHUB_TOKEN = st.secrets["github"]["token"]
+    GITHUB_OWNER = st.secrets["github"]["owner"]
+    GITHUB_REPO = st.secrets["github"]["repo"]
+except Exception as e:
+    st.error(f"GitHub secrets not configured: {e}")
     st.stop()
-# =====================================================================
+
+# Use authenticated request
+url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{db_filename}"
+
+headers = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3.raw"
+}
+
+#st.info(f"Downloading database: {db_filename} from GitHub...")
+
+try:
+    response = requests.get(url, headers=headers, timeout=15)
+
+    if response.status_code != 200:
+        st.error(f"Failed to download DB. HTTP {response.status_code}")
+        st.stop()
+
+    db_bytes = response.content
+
+    # Load into SQLite
+    fd, tmp_path = tempfile.mkstemp(suffix='.db')
+    os.close(fd)
+    with open(tmp_path, 'wb') as f:
+        f.write(db_bytes)
+
+    conn = sqlite3.connect(tmp_path)
+    memory_conn = sqlite3.connect(":memory:")
+    conn.backup(memory_conn)
+    conn.close()
+    os.unlink(tmp_path)
+    conn = memory_conn
+
+    #st.success(f"✅ Database loaded successfully ({len(db_bytes):,} bytes)")
+
+except Exception as e:
+    st.error(f"Database load failed: {e}")
+    st.stop()
+
 
 
 # ====================== CLEAN GAME REPORT ======================
@@ -1877,7 +1905,7 @@ def generate_player_report(conn, player_id: int) -> str:
     return report
 
 
-# ====================== QUERY PARAMS & REPORT ROUTING ======================
+# ====================== GITHUB DB LOADING (Clean) ======================
 full_code = st.query_params.get("code")
 game_code = st.query_params.get("g")
 player_code = st.query_params.get("p")
@@ -1886,56 +1914,47 @@ if not full_code:
     st.error("Missing code in the URL.")
     st.stop()
 
-# ====================== AUTH + LOAD META + DB (silent) ======================
+coach_code = full_code.split('-')[0] if '-' in full_code else full_code
+db_filename = f"{coach_code}.db"
+
+# Get GitHub config from secrets
 try:
-    auth = requests.get("https://api.pcloud.com/login", params={
-        "username": PCLOUD_EMAIL,
-        "password": PCLOUD_PASS
-    }).json()
-
-    token = auth["auth"]
-
-    # Load meta
-    meta_filename = f"{full_code}_meta.json"
-    link_resp = requests.get(
-        "https://api.pcloud.com/getfilelink",
-        params={"folderid": FOLDER_ID, "filename": meta_filename, "auth": token}
-    )
-    link_data = link_resp.json()
-    meta_link = link_data["metadata"]["link"] if "metadata" in link_data else f"https://{link_data['hosts'][0]}{link_data['path']}"
-    meta = requests.get(meta_link).json()
-
-    team_id = meta.get("team_id")
-    team_name = meta.get("team_name", "Unknown Team")
-
+    GITHUB_TOKEN = st.secrets["github"]["token"]
+    GITHUB_OWNER = st.secrets["github"]["owner"]
+    GITHUB_REPO = st.secrets["github"]["repo"]
 except Exception as e:
-    st.error(f"Failed to load team info: {e}")
+    st.error("GitHub configuration error. Please contact the developer.")
     st.stop()
 
-# Load Database
+# Authenticated request
+url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{db_filename}"
+
+headers = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3.raw"
+}
+
 try:
-    coach_code = full_code.split('-')[0] if '-' in full_code else full_code
-    db_filename = f"{coach_code}.db"
+    response = requests.get(url, headers=headers, timeout=15)
 
-    link_resp = requests.get(
-        "https://api.pcloud.com/getfilelink",
-        params={"folderid": FOLDER_ID, "filename": db_filename, "auth": token}
-    )
-    link_data = link_resp.json()
-    db_link = link_data["metadata"]["link"] if "metadata" in link_data else f"https://{link_data['hosts'][0]}{link_data['path']}"
+    if response.status_code != 200:
+        st.error("Could not load the database. Please check the share code.")
+        st.stop()
 
-    db_bytes = requests.get(db_link).content
+    db_bytes = response.content
 
+    # Load into SQLite
     fd, tmp_path = tempfile.mkstemp(suffix='.db')
     os.close(fd)
     with open(tmp_path, 'wb') as f:
         f.write(db_bytes)
 
-    temp_conn = sqlite3.connect(tmp_path)
-    conn = sqlite3.connect(":memory:")
-    temp_conn.backup(conn)
-    temp_conn.close()
+    conn = sqlite3.connect(tmp_path)
+    memory_conn = sqlite3.connect(":memory:")
+    conn.backup(memory_conn)
+    conn.close()
     os.unlink(tmp_path)
+    conn = memory_conn
 
 except Exception as e:
     st.error(f"Database load failed: {e}")
@@ -1949,7 +1968,7 @@ if player_code:
         st.stop()
 
     report_html = generate_player_report(conn, player_id)
-    st.html(report_html)                    # ← Changed from components.v1.html
+    st.html(report_html)
 
 elif game_code:
     game_id = unscramble_id(game_code, "G")
@@ -1958,13 +1977,19 @@ elif game_code:
         st.stop()
 
     report_html = generate_game_report(conn, game_id)
-    st.html(report_html)                    # ← Changed from components.v1.html
+    st.html(report_html)
 
 else:
-    # Default: Team Report
-    report_html = generate_team_report(conn, team_id, full_code)
-    st.html(report_html)  # instead of components.v1.html with height
+    # Default: Team Report - load first team in the database
+    c = conn.cursor()
+    c.execute("SELECT id FROM teams LIMIT 1")
+    row = c.fetchone()
+    if not row:
+        st.error("No teams found in this database.")
+        st.stop()
 
+    team_id = row[0]
+    report_html = generate_team_report(conn, team_id, full_code)
+    st.html(report_html)
 
 st.caption(f"Powered by CourtTag Web Viewer v{VERSION}{BUILD} • Code: {full_code} • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-
