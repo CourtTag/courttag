@@ -40,12 +40,15 @@ def unscramble_id(scrambled: str, prefix: str = "") -> int:
 st.set_page_config(
     layout="wide",
     page_title="CourtTag Report Viewer",
-    page_icon="🏀"   # Basketball emoji — works reliably everywhere
+    page_icon="https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Icon_512x512.png"
+    #page_icon="🏀"   # Basketball emoji — works reliably everywhere
 )
 
 # Manual HTML favicon fallback (most reliable for browser tab)
 st.markdown(
-    '<link rel="icon" href="https://i.imgur.com/OHpJHeX.png" type="image/png">',
+    f"""
+    <link rel="icon" href="https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Icon_512x512.png" type="image/png">
+    """,
     unsafe_allow_html=True
 )
 
@@ -485,7 +488,7 @@ def generate_team_report(conn, team_id, full_code):
     </td>
     <td valign='top'>
         <!-- Right: Shot Location Image -->
-        <img src="https://i.imgur.com/4uYlp8U.png" alt="Shot Location Diagram">
+        <img src="https://raw.githubusercontent.com/CourtTag/courttag-assets/main/Shot_Location_Diagram_v1.svg" alt="Shot Location Diagram" style="width: 300px; height: 240px;">
     </td></tr></table>
     """
 
@@ -792,7 +795,9 @@ def generate_team_report(conn, team_id, full_code):
     player_table += "</table></div>"
 
 
-    report = f"<h2 style='font-family: Arial, sans-serif;'>Team Report: {season} - {team_name}</h2>"
+    report = f"<h2 style='font-family: Arial, sans-serif;'>"
+    report += "<img src='https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Icon_BW.svg' style='width: 80px; height: 80px; vertical-align: middle; margin-right: 4px;'>"
+    report += f"Team Report: {season} - {team_name}</h2>"
     report += "<h3 style='font-family: Arial, sans-serif;'>Games Played Summary:</h3>"
     report += game_table
     #report += "<h3 style='font-family: Arial, sans-serif;'>Shot Quality</h3>"
@@ -802,7 +807,6 @@ def generate_team_report(conn, team_id, full_code):
     report += loc_table
     report += "<h3 style='font-family: Arial, sans-serif;'>Player Stats - Total (Per Game Avg)</h3>"
     report += player_table
-    report += f"<img src='https://i.imgur.com/OHpJHeX.png' width = '150' height = '150'>"
 
     return report
 
@@ -1176,7 +1180,9 @@ def generate_game_report(conn, game_id: int) -> str:
     format_ = (format_ or "Q").upper()
 
     report = f"""
-    <h2>Game Report: {name} - {home_name} (Home) vs {guest_name} (Guest)</h2>
+    <h2>
+    <img src='https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Icon_BW.svg' style='width: 80px; height: 80px; vertical-align: middle; margin-right: 4px;'>
+    Game Report: {name} - {home_name} (Home) vs {guest_name} (Guest)</h2>
     <p><b>Date:</b> {date} | <b>Location:</b> {location or '—'} | <b>Format:</b> {format_}</p>
     """
 
@@ -1411,7 +1417,7 @@ def generate_game_report(conn, game_id: int) -> str:
                     </tr>
                 </table>
         </td><td valign='top'>
-            <img src="https://i.imgur.com/4uYlp8U.png" width="300" height="240" alt="Shot Location Diagram">
+            <img src="https://raw.githubusercontent.com/CourtTag/courttag-assets/main/Shot_Location_Diagram_v1.svg" alt="Shot Location Diagram" style="width: 300px; height: 240px;">
         </td></tr></table>
         """
 
@@ -1489,7 +1495,6 @@ def generate_game_report(conn, game_id: int) -> str:
     report += guest_loc_table
 
     report += f'<p style="margin-top:40px; font-size:18px;"><a href="?code={st.query_params.get("code", "")}" style="color:#0066cc;">← Back to Team Report</a></p>'
-    report += f"<img src='https://i.imgur.com/OHpJHeX.png' width = '150' height = '150'>"
 
     return report
 
@@ -1515,10 +1520,15 @@ def generate_player_report(conn, player_id: int) -> str:
     p_name, p_number, team_name, season = player_info
     padded_num = str(p_number)
 
+    report = f"<h2>"
+    report += f"<img src='https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Icon_BW.svg' style='width: 80px; height: 80px; vertical-align: middle; margin-right: 4px;'>"
+    report += f"Player Report: "
     if season:
-        report = f"<h2>Player Report: {season} - {team_name} - #{padded_num} - {p_name}</h2>"
+        report += f"{season} - {team_name} - #{padded_num} - {p_name}"
     else:
-        report = f"<h2>Player Report: {team_name} - #{padded_num} - {p_name}</h2>"
+        report += f"{team_name} - #{padded_num} - {p_name}"
+
+    report += f"</h2>"
 
     # ====================== GAMES PLAYED TABLE ======================
     c.execute("""
@@ -1697,7 +1707,7 @@ def generate_player_report(conn, player_id: int) -> str:
     loc_rows = c.fetchall()
 
     loc_table = """
-    <table cellpadding="4" cellspacing="0"><tr><td valigh='top'>
+    <table cellpadding="4" cellspacing="0"><tr><td valign='top'>
          <table border="2" cellpadding="4" cellspacing="0" style="border-color: white; border-collapse: collapse; font-family: Arial, sans-serif;">
              <tr style="background:#d0e0ff; font-weight:bold; text-align:center;">
                  <th style="text-align:left;">Shot Location (FG Only)</th>
@@ -1750,7 +1760,7 @@ def generate_player_report(conn, player_id: int) -> str:
         </table>
     </td><td valign='top' align='left'>
         <!-- Shot Location Image -->
-          <img src="https://i.imgur.com/4uYlp8U.png" alt="Shot Location Diagram">
+          <img src="https://raw.githubusercontent.com/CourtTag/courttag-assets/main/Shot_Location_Diagram_v1.svg" alt="Shot Location Diagram" style="width: 300px; height: 240px;">
     </td></tr></table>
     """
 
@@ -1897,7 +1907,6 @@ def generate_player_report(conn, player_id: int) -> str:
 
     # Back link
     report += f'<p><a href="?code={st.query_params.get("code", "")}" style="color:#0066cc; font-size:18px;">← Back to Team Report</a></p>'
-    report += f"<img src='https://i.imgur.com/OHpJHeX.png' width = '150' height = '150'>"
 
     return report
 
@@ -2011,4 +2020,5 @@ else:
     report_html = generate_team_report(conn, team_id, full_code)
     st.html(report_html)
 
+st.html(f'<img src="https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Promo_QR.png" width="200" alt="CourtTag Logo">')
 st.caption(f"Powered by CourtTag Web Viewer • Code: {full_code} • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
