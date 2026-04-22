@@ -5,16 +5,13 @@ import tempfile
 import os
 from datetime import datetime
 
-
 def scramble_id(real_id: int, prefix: str = "") -> str:
-    """Very simple reversible scrambler: 87 → P87X4"""
+    """Simple reversible scrambler: 11 → T10011K"""
     if real_id is None or real_id <= 0:
         return ""
 
-    # Add a salt and make it look less obvious
-    salted = real_id + 10000
-    base = f"{salted:05d}"  # e.g. 10087
-    # Add a random-looking letter at the end
+    salted = real_id + 10000          # makes small numbers look longer
+    base = f"{salted:05d}"            # always 5 digits
     letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"
     letter = letters[real_id % len(letters)]
 
@@ -22,15 +19,15 @@ def scramble_id(real_id: int, prefix: str = "") -> str:
 
 
 def unscramble_id(scrambled: str, prefix: str = "") -> int:
-    """Reverse the simple scrambler"""
+    """Reverse the scrambler"""
     if not scrambled:
         return 0
 
-    # Remove prefix if present
+    # Remove prefix if present (e.g. "T10011K" → "10011K")
     if prefix and scrambled.startswith(prefix):
         scrambled = scrambled[len(prefix):]
 
-    # Remove the last letter, keep only digits
+    # Keep only digits, remove the final letter
     digits = ''.join(c for c in scrambled if c.isdigit())
     if not digits:
         return 0
@@ -1960,13 +1957,45 @@ except Exception as e:
     st.error(f"Database load failed: {e}")
     st.stop()
 
-# ====================== REPORT ROUTING ======================
+# ====================== REPORT ROUTING - Simple Scramble for Team ======================
+full_code = st.query_params.get("code")
+game_code = st.query_params.get("g")
+player_code = st.query_params.get("p")
+
+if not full_code:
+    st.error("Missing code in the URL.")
+    st.stop()
+
+# Parse: DLNND51SC4-T11  → coach_code and scrambled_team
+if '-T' in full_code:
+    coach_code, scrambled_team = full_code.split('-T', 1)
+else:
+    coach_code = full_code
+    scrambled_team = None
+
+# Resolve team_id
+c = conn.cursor()
+team_id = None
+
+if scrambled_team:
+    team_id = unscramble_id(scrambled_team, "T")
+
+if not team_id or team_id <= 0:
+    # Fallback
+    c.execute("SELECT id FROM teams LIMIT 1")
+    row = c.fetchone()
+    team_id = row[0] if row else None
+
+if not team_id:
+    st.error("No teams found in this database.")
+    st.stop()
+
+# Route reports
 if player_code:
     player_id = unscramble_id(player_code, "P")
     if player_id <= 0:
         st.error(f"Invalid player code: {player_code}")
         st.stop()
-
     report_html = generate_player_report(conn, player_id)
     st.html(report_html)
 
@@ -1975,21 +2004,11 @@ elif game_code:
     if game_id <= 0:
         st.error(f"Invalid game code: {game_code}")
         st.stop()
-
     report_html = generate_game_report(conn, game_id)
     st.html(report_html)
 
 else:
-    # Default: Team Report - load first team in the database
-    c = conn.cursor()
-    c.execute("SELECT id FROM teams LIMIT 1")
-    row = c.fetchone()
-    if not row:
-        st.error("No teams found in this database.")
-        st.stop()
-
-    team_id = row[0]
     report_html = generate_team_report(conn, team_id, full_code)
     st.html(report_html)
 
-st.caption(f"Powered by CourtTag Web Viewer v{VERSION}{BUILD} • Code: {full_code} • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+st.caption(f"Powered by CourtTag Web Viewer • Code: {full_code} • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
