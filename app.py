@@ -90,32 +90,32 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ====================== PCLOUD CREDENTIALS + DEBUG ======================
+# ====================== PCLOUD CREDENTIALS (Updated Login) ======================
 try:
     PCLOUD_EMAIL = st.secrets["pcloud"]["email"]
     PCLOUD_PASS  = st.secrets["pcloud"]["password"]
     FOLDER_ID    = st.secrets["pcloud"]["folder_id"]
-    
-    st.info("✅ Secrets loaded successfully")
+    st.info("✅ Secrets loaded")
 except Exception as e:
-    st.error(f"❌ Failed to read secrets: {e}")
+    st.error(f"❌ Secrets error: {e}")
     st.stop()
 
-# Try pCloud login with visible debug
-auth_response = requests.get("https://api.pcloud.com/login", params={
+# Newer pCloud login method
+login_resp = requests.get("https://api.pcloud.com/login", params={
     "username": PCLOUD_EMAIL,
-    "password": PCLOUD_PASS
+    "password": PCLOUD_PASS,
+    "getauth": 1   # This often helps with modern accounts
 }).json()
 
-st.write("**pCloud Login Response:**", auth_response)   # ← This will show us the raw response
+st.write("**pCloud Login Response:**", login_resp)
 
-if auth_response.get("result") != 0:
-    st.error(f"❌ pCloud login failed. Response: {auth_response}")
+if login_resp.get("result") != 0:
+    st.error(f"❌ pCloud login failed: {login_resp.get('error', login_resp)}")
     st.stop()
 
-token = auth_response.get("auth")
+token = login_resp.get("auth")
 if not token:
-    st.error("❌ No auth token received from pCloud")
+    st.error("❌ No auth token received")
     st.stop()
 
 st.success("✅ pCloud login successful")
