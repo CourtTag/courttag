@@ -90,7 +90,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ====================== PCLOUD CREDENTIALS (Updated Login) ======================
+# ====================== PCLOUD CREDENTIALS - FINAL ATTEMPT ======================
 try:
     PCLOUD_EMAIL = st.secrets["pcloud"]["email"]
     PCLOUD_PASS  = st.secrets["pcloud"]["password"]
@@ -100,25 +100,23 @@ except Exception as e:
     st.error(f"❌ Secrets error: {e}")
     st.stop()
 
-# Newer pCloud login method
-login_resp = requests.get("https://api.pcloud.com/login", params={
-    "username": PCLOUD_EMAIL,
-    "password": PCLOUD_PASS,
-    "getauth": 1   # This often helps with modern accounts
-}).json()
-
-st.write("**pCloud Login Response:**", login_resp)
-
-if login_resp.get("result") != 0:
-    st.error(f"❌ pCloud login failed: {login_resp.get('error', login_resp)}")
+# Try multiple login methods
+for method in ["getauth=1", ""]:
+    login_resp = requests.get("https://api.pcloud.com/login", params={
+        "username": PCLOUD_EMAIL,
+        "password": PCLOUD_PASS,
+        **({"getauth": 1} if "getauth" in method else {})
+    }).json()
+    
+    st.write(f"**Login attempt with {method or 'basic'}**:", login_resp)
+    
+    if login_resp.get("result") == 0:
+        token = login_resp.get("auth")
+        st.success("✅ Login successful!")
+        break
+else:
+    st.error("❌ All login attempts failed. pCloud may require app-specific token.")
     st.stop()
-
-token = login_resp.get("auth")
-if not token:
-    st.error("❌ No auth token received")
-    st.stop()
-
-st.success("✅ pCloud login successful")
 # =====================================================================
 
 
