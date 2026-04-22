@@ -90,11 +90,36 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ====================== PCLOUD CREDENTIALS (from Streamlit Secrets) ======================
-PCLOUD_EMAIL = st.secrets["pcloud"]["email"]
-PCLOUD_PASS  = st.secrets["pcloud"]["password"]
-FOLDER_ID    = st.secrets["pcloud"]["folder_id"]
-# =======================================================================================
+# ====================== PCLOUD CREDENTIALS + DEBUG ======================
+try:
+    PCLOUD_EMAIL = st.secrets["pcloud"]["email"]
+    PCLOUD_PASS  = st.secrets["pcloud"]["password"]
+    FOLDER_ID    = st.secrets["pcloud"]["folder_id"]
+    
+    st.info("✅ Secrets loaded successfully")
+except Exception as e:
+    st.error(f"❌ Failed to read secrets: {e}")
+    st.stop()
+
+# Try pCloud login with visible debug
+auth_response = requests.get("https://api.pcloud.com/login", params={
+    "username": PCLOUD_EMAIL,
+    "password": PCLOUD_PASS
+}).json()
+
+st.write("**pCloud Login Response:**", auth_response)   # ← This will show us the raw response
+
+if auth_response.get("result") != 0:
+    st.error(f"❌ pCloud login failed. Response: {auth_response}")
+    st.stop()
+
+token = auth_response.get("auth")
+if not token:
+    st.error("❌ No auth token received from pCloud")
+    st.stop()
+
+st.success("✅ pCloud login successful")
+# =====================================================================
 
 
 # ====================== CLEAN GAME REPORT ======================
