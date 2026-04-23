@@ -1671,7 +1671,7 @@ def generate_player_report(conn, player_id: int) -> str:
     game_table += f"""
         <tr style="font-weight:bold; background:#d0e0ff; text-align:center;">
             <td style="text-align:left;">Games Played:</td>
-            <td></td><td style="text-align:right;">Totals:</td>
+            <td style="text-align:center;">{num_games}</td><td style="text-align:right;">Totals:</td>
             <td>{total_2pm}</td><td>{total_2pa}</td><td>{total_p2:.1f}%</td>
             <td>{total_3pm}</td><td>{total_3pa}</td><td>{total_p3:.1f}%</td>
             <td>{total_efg_pct:.1f}%</td>
