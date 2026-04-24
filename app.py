@@ -1426,6 +1426,7 @@ def generate_game_report(conn, game_id: int) -> str:
 
         # Shot Location table
         loc_table = """
+        <h4>Shot Quality Summary</h4>
         <table border='0' cellpadding='0'><tr><td valign='top'>
                 <table border="2" cellpadding="4" cellspacing="0" style="width: max-content; border-color: white; border-collapse: collapse; font-family: Arial, sans-serif;">
                     <tr style='font-weight:bold; background:#75c875;'>
