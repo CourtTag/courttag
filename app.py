@@ -57,19 +57,19 @@ st.markdown("""
     <style>
         @media (prefers-color-scheme: dark) {
             html, body, [data-testid="stAppViewContainer"], 
-            [data-testid="stHeader"], .stMarkdown, .stTable, 
-            .stMarkdown h1, .stMarkdown h2, .stMarkdown h3,
-            table, th, td, p, span, div {
+            [data-testid="stHeader"], .stMarkdown, .stTable {
                 background-color: #ffffff !important;
-                color: #1a1a1a !important;
+                color: #000000 !important;
             }
             
             table, th, td {
+                background-color: #ffffff !important;
+                color: #000000 !important;
                 border-color: #dddddd !important;
             }
             
-            tr:nth-child(even) {
-                background-color: #f8f9fa !important;
+            h1, h2, h3, h4, p, span, div {
+                color: #000000 !important;
             }
         }
     </style>
