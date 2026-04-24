@@ -52,24 +52,18 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Force Light Mode to prevent white text on white background in Night/Dark Mode
 st.markdown("""
     <style>
-        /* Force Light Mode everywhere */
-        html, body, [class*="st-"] {
-            background-color: #ffffff !important;
-            color: #1a1a1a !important;
-        }
-        
-        table, th, td {
-            background-color: #ffffff !important;
-            color: #1a1a1a !important;
-            border: 1px solid #cccccc !important;
-        }
-        
-        /* Make alternating rows still visible but light */
-        tr:nth-child(even) {
-            background-color: #f8f9fa !important;
+        @media (prefers-color-scheme: dark) {
+            html, body, [data-testid="stAppViewContainer"], 
+            [data-testid="stHeader"], .stMarkdown, .stTable {
+                background-color: #ffffff !important;
+            }
+            
+            /* Force all text to black */
+            h1, h2, h3, h4, p, span, div, td, th, label {
+                color: #1a1a1a !important;
+            }
         }
     </style>
 """, unsafe_allow_html=True)
