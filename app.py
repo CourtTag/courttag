@@ -52,6 +52,29 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# Force Light Mode to prevent white text on white background in Night/Dark Mode
+st.markdown("""
+    <style>
+        @media (prefers-color-scheme: dark) {
+            html, body, [data-testid="stAppViewContainer"], 
+            [data-testid="stHeader"], .stMarkdown, .stTable, 
+            .stMarkdown h1, .stMarkdown h2, .stMarkdown h3,
+            table, th, td, p, span, div {
+                background-color: #ffffff !important;
+                color: #1a1a1a !important;
+            }
+            
+            table, th, td {
+                border-color: #dddddd !important;
+            }
+            
+            tr:nth-child(even) {
+                background-color: #f8f9fa !important;
+            }
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # Shot Quality mapping used in the Shot Quality table
 SHOT_QUALITY = [
     ("A / Paint - Close", "A"),
