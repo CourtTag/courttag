@@ -1426,8 +1426,7 @@ def generate_game_report(conn, game_id: int) -> str:
 
         # Shot Location table
         loc_table = """
-        <h4>Shot Quality Summary</h4>
-        <table border='0' cellpadding='0'><tr><td valign='top'>
+            <table border='0' cellpadding='0'><tr><td valign='top'>
                 <table border="2" cellpadding="4" cellspacing="0" style="width: max-content; border-color: white; border-collapse: collapse; font-family: Arial, sans-serif;">
                     <tr style='font-weight:bold; background:#75c875;'>
                         <th style='text-align: left;'>Shot Location (FG Only)</th>
@@ -1519,6 +1518,7 @@ def generate_game_report(conn, game_id: int) -> str:
     report += home_player_table
 
     home_shot_quality = generate_shot_quality_table_for_game(conn, game_id, home_id, "Home")
+    report += "<h4>Shot Quality Summary</h4>"
     report += home_shot_quality
     report += home_loc_table
 
@@ -1545,6 +1545,7 @@ def generate_game_report(conn, game_id: int) -> str:
     report += guest_player_table
 
     guest_shot_quality = generate_shot_quality_table_for_game(conn, game_id, guest_id, "Guest")
+    report += "<h4>Shot Quality Summary</h4>"
     report += guest_shot_quality
     report += guest_loc_table
 
