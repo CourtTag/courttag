@@ -1355,6 +1355,57 @@ def generate_game_report(conn, game_id: int) -> str:
             """
             row_colour = "#DCFFDC;" if row_colour == "#FFFFFF;" else "#FFFFFF;"
 
+        # ====================== TOTALS ROW (Missing Summary) ======================
+        total = {k: sum(s[k] for s in player_stats.values()) for k in stat_keys}
+
+        total_fga_2pt = total['2PTM'] + total['2PTA']
+        total_fga_3pt = total['3PTM'] + total['3PTA']
+        total_fga = total_fga_2pt + total_fga_3pt
+        total_fta = total['FTM'] + total['FTA']
+
+        total_p2 = round((total['2PTM'] / total_fga_2pt * 100), 1) if total_fga_2pt > 0 else 0.0
+        total_p3 = round((total['3PTM'] / total_fga_3pt * 100), 1) if total_fga_3pt > 0 else 0.0
+        total_ft = round((total['FTM'] / total_fta * 100), 1) if total_fta > 0 else 0.0
+
+        total_fgm = total['2PTM'] + total['3PTM']
+        total_efg = round(((total_fgm + 0.5 * total['3PTM']) / total_fga * 100), 1) if total_fga > 0 else 0.0
+
+        total_pts = (total['2PTM'] * 2) + (total['3PTM'] * 3) + total['FTM']
+        total_treb = total['ORB'] + total['DREB']
+
+        total_ftf = round((total_fta / total_fga), 2) if total_fga > 0 else 0.0
+        total_atr = round((total['AST'] / total['TO']), 2) if total['TO'] > 0 else 0.0
+
+        player_table += f"""
+            <tr style="font-weight:bold; background:#75c875; text-align:center;">
+                <td colspan="2" style="text-align:right;">Total:</td>
+                <td>{total['2PTM']}</td>
+                <td>{total_fga_2pt}</td>
+                <td>{total_p2:.1f}%</td>
+                <td>{total['3PTM']}</td>
+                <td>{total_fga_3pt}</td>
+                <td>{total_p3:.1f}%</td>
+                <td>{total_efg:.1f}%</td>
+                <td>{total['FTM']}</td>
+                <td>{total_fta}</td>
+                <td>{total_ft:.1f}%</td>
+                <td>{total_ftf:.2f}</td>
+                <td>{total_pts}</td>
+                <td>{total['ORB']}</td>
+                <td>{total['DREB']}</td>
+                <td>{total_treb}</td>
+                <td>{total['PFL']}</td>
+                <td>{total['AST']}</td>
+                <td>{total['TO']}</td>
+                <td>{total['STL']}</td>
+                <td>{total['BLK']}</td>
+                <td>{total['CHG']}</td>
+                <td>{total['DFL']}</td>
+                <td>{total_atr:.2f}</td>
+            </tr>
+        </table>
+        """
+
         # Exact desktop totals + possession
         total = {k: sum(s[k] for s in player_stats.values()) for k in stat_keys}
         total_fga = total['2PTM'] + total['2PTA']
@@ -1370,6 +1421,8 @@ def generate_game_report(conn, game_id: int) -> str:
 
         total_efg = ((total['2PTM'] + total['3PTM']) + 0.5 * total['3PTM']) / (total_fga + total_three_a) * 100 if (total_fga + total_three_a) > 0 else 0.0
         total_ftf = (total_fta / (total_fga + total_three_a)) if (total_fga + total_three_a) > 0 else 0.0
+
+
 
         # Shot Location table
         loc_table = """
