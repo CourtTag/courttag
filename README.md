@@ -1,4 +1,7 @@
-## Hi there 👋
+Hi folks, this app was created to allow coaches who use my CourtTag.net Basketball PC Event Tagging software to share their team/player/game reports with their parents/player members via a direct team link browser URL.
+
+The PC software itself is free to all coaches.. just tool to help fellow volunteer basketball coaches get accurate stats for their team and players.  Its not an AI system, just a viewer/tagger and reporting tool.
+
 
 <!--
 **CourtTag/courttag** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
