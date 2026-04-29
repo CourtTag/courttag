@@ -127,7 +127,8 @@ BUILD = "b2"
 CT_BUILD = "b47"
 
 
-#1.0b1 First Version, slowly adding reports from CT App.. games listing working so far
+#1.0b1 First Version, slowly adding reports from CT App.. games listing working so far.
+ #b2 Also added the YouTube Highlighted Events URL Links to the game reports
 #1.0b2 Adjusted Shot Quality Array Text to better match up with main app.
 
 
@@ -1053,6 +1054,117 @@ def generate_quarter_table(conn, game_id: int) -> str:
     quarter_table += "</table><br>"
     return quarter_table
 
+def _generate_simple_highlights_html(conn, game_id: int, team_side: str, team_label: str) -> str:
+    """Safe version - works with old and new databases"""
+    c = conn.cursor()
+
+    # === Check if youtube_url column exists (backwards compatibility) ===
+    c.execute("PRAGMA table_info(games)")
+    columns = [info[1] for info in c.fetchall()]
+    has_youtube = "youtube_url" in columns
+
+    if not has_youtube:
+        return ""  # Silent on old databases
+
+    # Get YouTube URL
+    c.execute("SELECT youtube_url FROM games WHERE id = ?", (game_id,))
+    row = c.fetchone()
+    youtube_url = row[0] if row and row[0] else None
+
+    if not youtube_url:
+        return ""
+
+    # Extract video ID
+    if "v=" in youtube_url:
+        video_id = youtube_url.split("v=")[-1].split("&")[0]
+    else:
+        video_id = youtube_url.split("/")[-1]
+
+    # Get highlights
+    c.execute("""
+        SELECT 
+            e.time_ms,
+            e.quarter,
+            p.number,
+            p.name,
+            e.type,
+            e.location,
+            e.shot_quality,
+            e.player_id
+        FROM events e
+        JOIN videos v ON e.video_id = v.id
+        LEFT JOIN players p ON e.player_id = p.id
+        WHERE v.game_id = ?
+          AND e.is_highlight = 1
+          AND (
+                e.player_id IS NULL 
+                OR EXISTS (
+                    SELECT 1 FROM game_rosters gr 
+                    WHERE gr.player_id = e.player_id 
+                      AND gr.game_id = ? 
+                      AND gr.side = ?
+                )
+              )
+        ORDER BY e.video_id, e.time_ms
+    """, (game_id, game_id, team_side))
+
+    events = c.fetchall()
+
+    if not events:
+        return ""
+
+    row_colour = "#FFFFFF;"
+
+    html = f"<table border='0' cellpadding='0' cellspacing='2'>"
+    html += f"<tr style = 'font-weight:bold; background:#75c875;'>"
+    html += f"<th>{team_label} Highlight Events (YouTube Links)</th>"
+
+    for ev in events:
+        time_ms = ev[0]
+        seconds = time_ms // 1000
+        adjusted_sec = max(0, seconds - 5)
+
+        time_display = f"{seconds//60:02d}:{seconds%60:02d}"
+        quarter = ev[1] or ""
+
+        if ev[7] is None:
+            player = "Team"
+        else:
+            player = f"#{ev[2]} {ev[3]}" if ev[2] else "Unknown"
+
+        event_type = ev[4] or ""
+        location_code = (ev[5] or "")[:3].strip() if ev[5] else ""
+        quality = ev[6] or ""
+
+        extra = ""
+        if location_code or quality:
+            parts = [p for p in [location_code, quality] if p]
+            extra = " (" + " - ".join(parts) + ")"
+
+        link = f"https://youtu.be/{video_id}?t={adjusted_sec}"
+
+        html += f"""
+        <tr style='background:{row_colour}'><td>
+                <a href="{link}" target="_blank" style="color:#0066cc; text-decoration:none; font-weight:bold;"> ▶ 
+                    <strong>{time_display}</strong>- {quarter} - 
+                    {player} - {event_type}{extra}
+                </a>
+            </td></tr>
+        """
+        if row_colour == "#FFFFFF;":
+            row_colour = "#DCFFDC;"
+        else:
+            row_colour = "#FFFFFF;"
+
+    html += "</table><br>"
+    return html
+
+def generate_home_highlights_html(conn, game_id: int) -> str:
+    return _generate_simple_highlights_html(conn, game_id, "home", "Home")
+
+def generate_guest_highlights_html(conn, game_id: int) -> str:
+    return _generate_simple_highlights_html(conn, game_id, "guest", "Guest")
+
 
 def generate_shot_quality_table_for_game(conn, game_id: int, team_id: int, side_label: str) -> str:
     """Standalone Shot Quality table for ONE specific team in ONE specific game
@@ -1557,6 +1669,10 @@ def generate_game_report(conn, game_id: int) -> str:
     quarter_table_html = generate_quarter_table(conn, game_id)
     report += quarter_table_html
 
+    # === ADD HIGHLIGHTS HERE ===
+    home_highlights = generate_home_highlights_html(conn, game_id)
+    guest_highlights = generate_guest_highlights_html(conn, game_id)
+
     # Home Advanced Stats
     report += f"<h3>Home Team Advanced Stats: {home_name}</h3>"
     report += f"""
@@ -1583,6 +1699,7 @@ def generate_game_report(conn, game_id: int) -> str:
     report += "<h4>Shot Quality Summary</h4>"
     report += home_shot_quality
     report += home_loc_table
+    report += home_highlights
 
     # Guest Advanced Stats
     report += f"<br><h3>Guest Team Advanced Stats: {guest_name}</h3>"
@@ -1606,10 +1723,13 @@ def generate_game_report(conn, game_id: int) -> str:
     """
     report += guest_player_table
 
+
+
     guest_shot_quality = generate_shot_quality_table_for_game(conn, game_id, guest_id, "Guest")
     report += "<h4>Shot Quality Summary</h4>"
     report += guest_shot_quality
     report += guest_loc_table
+    report += guest_highlights
 
     report += f'<p style="margin-top:40px; font-size:18px;"><a href="?code={st.query_params.get("code", "")}" style="color:#0066cc;">← Back to Team Report</a></p>'
 
