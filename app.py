@@ -69,20 +69,22 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Shot Quality mapping used in the Shot Quality table
+
 SHOT_QUALITY = [
-    ("A / Paint - Close", "A"),
-    ("B / Paint - Mid", "B"),
-    ("C / Mid-Range", "C"),
-    ("D / Long 2 / 3PT", "D"),
-    # Add any other qualities you use in your desktop app
+    ("A - Elite / Big Advantage Shot",      "A"),
+    ("B - Strong / Very Good Shot",         "B"),
+    ("C - Average / Mid Advantage Shot",    "C"),
+    ("D - Poor / Low Quality Shot",         "D"),
 ]
 
+
 VERSION = "1.0"
-BUILD = "b1"
+BUILD = "b2"
 CT_BUILD = "b47"
 
 
 #1.0b1 First Version, slowly adding reports from CT App.. games listing working so far
+#1.0b2 Adjusted Shot Quality Array Text to better match up with main app.
 
 
 # Hide almost all Streamlit default junk + reduce top spacing
