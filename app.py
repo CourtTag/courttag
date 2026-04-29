@@ -3,7 +3,10 @@ import sqlite3
 import requests
 import tempfile
 import os
+import qrcode
 from datetime import datetime
+from io import BytesIO
+from urllib.parse import urljoin
 
 def scramble_id(real_id: int, prefix: str = "") -> str:
     """Simple reversible scrambler: 11 → T10011K"""
@@ -36,6 +39,46 @@ def unscramble_id(scrambled: str, prefix: str = "") -> int:
     real_id = salted - 10000
     return real_id if real_id > 0 else 0
 
+
+def get_current_full_url():
+    """Returns the full current URL (works on localhost and deployed)"""
+
+    # Try modern context first (Streamlit 1.38+)
+    if hasattr(st, "context") and hasattr(st.context, "url"):
+        base = st.context.url
+    else:
+        # Fallback for older versions
+        base = "http://localhost:8501"
+
+    # Get current query parameters
+    query_params = st.query_params.to_dict()
+
+    if query_params:
+        # Build query string
+        qs = "&".join(f"{k}={v}" for k, v in query_params.items())
+        full_url = f"{base}?{qs}"
+    else:
+        full_url = base
+
+    return full_url
+
+def generate_qr_code(url: str, box_size=10, border=4):
+    """Generate QR code image from a URL"""
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=box_size,
+        border=border,
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer.getvalue()
+
 # ====================== PAGE CONFIG ======================
 st.set_page_config(
     layout="wide",
@@ -52,6 +95,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# Force Light Mode to prevent white text on white background in Night/Dark Mode
 st.markdown("""
     <style>
         @media (prefers-color-scheme: dark) {
@@ -59,7 +103,7 @@ st.markdown("""
             [data-testid="stHeader"], .stMarkdown, .stTable {
                 background-color: #ffffff !important;
             }
-            
+
             /* Force all text to black */
             h1, h2, h3, h4, p, span, div, td, th, label {
                 color: #1a1a1a !important;
@@ -1988,6 +2032,7 @@ def generate_player_report(conn, player_id: int) -> str:
 full_code = st.query_params.get("code")
 game_code = st.query_params.get("g")
 player_code = st.query_params.get("p")
+full_url = get_current_full_url()
 
 if not full_code:
     st.error("Missing code in the URL.")
@@ -2092,6 +2137,13 @@ elif game_code:
 else:
     report_html = generate_team_report(conn, team_id, full_code)
     st.html(report_html)
+    # Show QR Code for sharing
+    qr_image = generate_qr_code(full_url, box_size=6, border=2)
+    st.image(qr_image, width=300)
+    # st.caption(f"Link: {full_url}")
 
 st.html(f'<img src="https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Promo_QR.png" width="200" alt="CourtTag Logo">')
+
+
+
 st.caption(f"Powered by CourtTag Web Viewer • Code: {full_code} • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
