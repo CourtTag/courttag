@@ -129,6 +129,7 @@ CT_BUILD = "b47"
 
 #1.0b1 First Version, slowly adding reports from CT App.. games listing working so far.
  #b2 Also added the YouTube Highlighted Events URL Links to the game reports
+ #b2 Also corrected a team code issue (made sure its valid) and updated the code error reporting formatting
 #1.0b2 Adjusted Shot Quality Array Text to better match up with main app.
 
 
@@ -153,65 +154,21 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ====================== GITHUB DB LOADING (Private Repo + Token) ======================
+# ====================== Check for Required Query ?Code= before proceeding ======================
 full_code = st.query_params.get("code")
 if not full_code:
-    st.error("Missing code in the URL.")
-    st.stop()
+    error_html = f"<h2 style='font-family: Arial, sans-serif;'>"
+    error_html += f"<img src='https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Icon_BW.svg' style='width: 80px; height: 80px; vertical-align: middle; margin-right: 4px;'>"
+    error_html += f"Team Report Viewer</h2>"
+    error_html += f"<h3 style='font-family: Arial, sans-serif;'>You are missing the Team Code</h3>"
+    error_html += f"<p><strong>Check with your coach for a full link to view your team report.</strong></p>"
+    error_html += f"<img src='https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Promo_QR.png' width='200' alt='CourtTag Logo'>"
 
-coach_code = full_code.split('-')[0] if '-' in full_code else full_code
-db_filename = f"{coach_code}.db"
-
-# Get GitHub config from secrets
-try:
-    GITHUB_TOKEN = st.secrets["github"]["token"]
-    GITHUB_OWNER = st.secrets["github"]["owner"]
-    GITHUB_REPO = st.secrets["github"]["repo"]
-except Exception as e:
-    st.error(f"GitHub secrets not configured: {e}")
-    st.stop()
-
-# Use authenticated request
-url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{db_filename}"
-
-headers = {
-    "Authorization": f"token {GITHUB_TOKEN}",
-    "Accept": "application/vnd.github.v3.raw"
-}
-
-#st.info(f"Downloading database: {db_filename} from GitHub...")
-
-try:
-    response = requests.get(url, headers=headers, timeout=15)
-
-    if response.status_code != 200:
-        st.error(f"Failed to download DB. HTTP {response.status_code}")
-        st.stop()
-
-    db_bytes = response.content
-
-    # Load into SQLite
-    fd, tmp_path = tempfile.mkstemp(suffix='.db')
-    os.close(fd)
-    with open(tmp_path, 'wb') as f:
-        f.write(db_bytes)
-
-    conn = sqlite3.connect(tmp_path)
-    memory_conn = sqlite3.connect(":memory:")
-    conn.backup(memory_conn)
-    conn.close()
-    os.unlink(tmp_path)
-    conn = memory_conn
-
-    #st.success(f"✅ Database loaded successfully ({len(db_bytes):,} bytes)")
-
-except Exception as e:
-    st.error(f"Database load failed: {e}")
+    st.html(error_html)
+    st.caption(f"Powered by CourtTag Web Viewer • Code: {full_code} • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     st.stop()
 
 
-
-# ====================== CLEAN GAME REPORT ======================
 def generate_team_report(conn, team_id, full_code):
     c = conn.cursor()
     c.row_factory = lambda cursor, row: tuple(0 if val is None else val for val in row)
@@ -2148,15 +2105,10 @@ def generate_player_report(conn, player_id: int) -> str:
     return report
 
 
-# ====================== GITHUB DB LOADING (Clean) ======================
-full_code = st.query_params.get("code")
+# ====================== REPORT LOADING ======================
 game_code = st.query_params.get("g")
 player_code = st.query_params.get("p")
 full_url = get_current_full_url()
-
-if not full_code:
-    st.error("Missing code in the URL.")
-    st.stop()
 
 coach_code = full_code.split('-')[0] if '-' in full_code else full_code
 db_filename = f"{coach_code}.db"
@@ -2182,7 +2134,15 @@ try:
     response = requests.get(url, headers=headers, timeout=15)
 
     if response.status_code != 200:
-        st.error("Could not load the database. Please check the share code.")
+        #st.error("Could not load the database. Please check the share code.")
+        error_html = f"<h2 style='font-family: Arial, sans-serif;'>"
+        error_html += f"<img src='https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Icon_BW.svg' style='width: 80px; height: 80px; vertical-align: middle; margin-right: 4px;'>"
+        error_html += f"Team Report Viewer</h2>"
+        error_html += f"<h3 style='font-family: Arial, sans-serif;'>Invalid Coaches Code</h3>"
+        error_html += f"<p><strong>The code in your link is invalid or incomplete.</strong></p>"
+        error_html += f"<p>Please check with your coach for the full correct link to view your team report.</p>"
+        error_html += f"<img src='https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Promo_QR.png' width='200' alt='CourtTag Logo'>"
+        st.html(error_html)
         st.stop()
 
     db_bytes = response.content
@@ -2204,15 +2164,7 @@ except Exception as e:
     st.error(f"Database load failed: {e}")
     st.stop()
 
-# ====================== REPORT ROUTING - Simple Scramble for Team ======================
-full_code = st.query_params.get("code")
-game_code = st.query_params.get("g")
-player_code = st.query_params.get("p")
-
-if not full_code:
-    st.error("Missing code in the URL.")
-    st.stop()
-
+# ====================== VALIDATE TEAM CODE ======================
 # Parse: DLNND51SC4-T11  → coach_code and scrambled_team
 if '-T' in full_code:
     coach_code, scrambled_team = full_code.split('-T', 1)
@@ -2220,21 +2172,39 @@ else:
     coach_code = full_code
     scrambled_team = None
 
-# Resolve team_id
 c = conn.cursor()
-team_id = None
 
+team_id = None
 if scrambled_team:
     team_id = unscramble_id(scrambled_team, "T")
 
-if not team_id or team_id <= 0:
-    # Fallback
-    c.execute("SELECT id FROM teams LIMIT 1")
-    row = c.fetchone()
-    team_id = row[0] if row else None
+# === STRICT VALIDATION ===
+if team_id is None or team_id <= 0:
+    error_html = f"<h2 style='font-family: Arial, sans-serif;'>"
+    error_html += f"<img src='https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Icon_BW.svg' style='width: 80px; height: 80px; vertical-align: middle; margin-right: 4px;'>"
+    error_html += f"Team Report Viewer</h2>"
+    error_html += f"<h3 style='font-family: Arial, sans-serif;'>Invalid Team Code</h3>"
+    error_html += f"<p><strong>The team code in your link is invalid or incomplete.</strong></p>"
+    error_html += f"<p>Please check with your coach for the full correct link to view your team report.</p>"
+    error_html += f"<img src='https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Promo_QR.png' width='200' alt='CourtTag Logo'>"
 
-if not team_id:
-    st.error("No teams found in this database.")
+    st.html(error_html)
+    st.caption(f"Powered by CourtTag Web Viewer • Code: {full_code} • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    st.stop()
+
+# Verify the team actually exists in this database
+c.execute("SELECT id FROM teams WHERE id = ?", (team_id,))
+if not c.fetchone():
+    error_html = f"<h2 style='font-family: Arial, sans-serif;'>"
+    error_html += f"<img src='https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Icon_BW.svg' style='width: 80px; height: 80px; vertical-align: middle; margin-right: 4px;'>"
+    error_html += f"Team Report Viewer</h2>"
+    error_html += f"<h3 style='font-family: Arial, sans-serif;'>Team Not Found</h3>"
+    error_html += f"<p><strong>The team code you used does not exist in this database.</strong></p>"
+    error_html += f"<p>Please use the exact link provided by your coach.</p>"
+    error_html += f"<img src='https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Promo_QR.png' width='200' alt='CourtTag Logo'>"
+
+    st.html(error_html)
+    st.caption(f"Powered by CourtTag Web Viewer • Code: {full_code} • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     st.stop()
 
 # Route reports
