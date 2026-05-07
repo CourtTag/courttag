@@ -127,10 +127,11 @@ BUILD = "b2"
 CT_BUILD = "b47"
 
 
-#1.0b1 First Version, slowly adding reports from CT App.. games listing working so far.
+#1.0b3 Added YouTube URL (if any) to the game report header.
+#1.0b2 First Version, slowly adding reports from CT App.. games listing working so far.
  #b2 Also added the YouTube Highlighted Events URL Links to the game reports
  #b2 Also corrected a team code issue (made sure its valid) and updated the code error reporting formatting
-#1.0b2 Adjusted Shot Quality Array Text to better match up with main app.
+#1.0b1 Adjusted Shot Quality Array Text to better match up with main app.
 
 
 # Hide almost all Streamlit default junk + reduce top spacing
@@ -1291,14 +1292,14 @@ def generate_game_report(conn, game_id: int) -> str:
 
     # Game basic info
     c.execute("""
-        SELECT name, date, location, format, home_team_id, guest_team_id 
+        SELECT name, date, location, format, home_team_id, guest_team_id, youtube_url
         FROM games WHERE id = ?
     """, (game_id,))
     game_row = c.fetchone()
     if not game_row:
         return "<h2>Game not found.</h2>"
 
-    name, date, location, format_, home_id, guest_id = game_row
+    name, date, location, format_, home_id, guest_id, youtube_url = game_row
 
     c.execute("SELECT name FROM teams WHERE id = ?", (home_id,))
     home_row = c.fetchone()
@@ -1310,11 +1311,23 @@ def generate_game_report(conn, game_id: int) -> str:
 
     format_ = (format_ or "Q").upper()
 
+    # === YouTube Link (only if exists) ===
+    youtube_html = ""
+    if youtube_url and str(youtube_url).strip():
+        youtube_html = f"""
+            <p><b>🎥 Game Video:</b> 
+                <a href="{youtube_url}" target="_blank" style="color:#0066cc; text-decoration:underline;">
+                    Watch on YouTube
+                </a>
+            </p>
+            """
+
     report = f"""
     <h2>
     <img src='https://raw.githubusercontent.com/CourtTag/courttag-assets/main/CourtTag_Icon_BW.svg' style='width: 80px; height: 80px; vertical-align: middle; margin-right: 4px;'>
     Game Report: {name} - {home_name} (Home) vs {guest_name} (Guest)</h2>
     <p><b>Date:</b> {date} | <b>Location:</b> {location or '—'} | <b>Format:</b> {format_}</p>
+    {youtube_html}
     """
 
     # Events query
