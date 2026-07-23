@@ -123,10 +123,11 @@ SHOT_QUALITY = [
 
 
 VERSION = "1.0"
-BUILD = "b2"
-CT_BUILD = "b47"
+BUILD = "b4"
+CT_BUILD = "b50"
 
 
+#1.0b4 Added ABR Numbers all reports.
 #1.0b3 Added YouTube URL (if any) to the game report header.
 #1.0b2 First Version, slowly adding reports from CT App.. games listing working so far.
  #b2 Also added the YouTube Highlighted Events URL Links to the game reports
@@ -224,6 +225,7 @@ def generate_team_report(conn, team_id, full_code):
                 <th>PFL</th><th>AST</th><th>TO</th>
                 <th>STL</th><th>BLK</th><th>CHG</th><th>DFL</th>
                 <th>TOV%</th><th>ATR</th>
+                <th>ABR</th> 
             </tr>
     """
 
@@ -267,6 +269,22 @@ def generate_team_report(conn, team_id, full_code):
         atr = round(ast / tov, 2) if tov > 0 else 0.0
         tov_pct = round(tov / poss * 100, 1) if poss > 0 else 0.0
 
+        # ABR for this game
+        abr_game = 0.0
+        if fga_total > 0:
+            c.execute("""
+                            SELECT SUM(CASE WHEN shot_quality IN ('A','B') THEN 1 ELSE 0 END)
+                            FROM events e
+                            JOIN videos v ON e.video_id = v.id
+                            WHERE v.game_id = ?
+                              AND (
+                                e.player_id IN (SELECT player_id FROM game_rosters WHERE game_id = ? AND side = ?)
+                                OR (e.player_id IS NULL AND e.team_side = ?)
+                              )
+                        """, (g_id, g_id, team_side, team_side))
+            ab_makes = c.fetchone()[0] or 0
+            abr_game = round(ab_makes / fga_total * 100, 1)
+
         game_link = scramble_id(g_id, "G")
 
         game_table += f"""
@@ -301,6 +319,7 @@ def generate_team_report(conn, team_id, full_code):
             <td style="text-align:center;">{dfl}</td>
             <td style="text-align:center;">{tov_pct:.1f}%</td>
             <td style="text-align:center;">{atr:.2f}</td>
+            <td style="text-align:center;">{abr_game:.1f}%</td>
         </tr>
         """
         row_colour = "#FFFFFF;" if row_colour == "#FFEDB8;" else "#FFEDB8;"
@@ -352,6 +371,27 @@ def generate_team_report(conn, team_id, full_code):
     overall_tov_pct = round(total_to / total_poss * 100, 1) if total_poss > 0 else 0.0
     avg_atr = round(total_ast / total_to, 2) if total_to > 0 else 0.0
 
+    # Season ABR (only this team's shots)
+    total_fga = total_2pa + total_3pa
+    season_abr = 0.0
+    if total_fga > 0:
+        c.execute("""
+            SELECT SUM(CASE WHEN shot_quality IN ('A','B') THEN 1 ELSE 0 END)
+            FROM events e
+            JOIN videos v ON e.video_id = v.id
+            JOIN games g ON v.game_id = g.id
+            WHERE (g.home_team_id = ? OR g.guest_team_id = ?)
+              AND g.is_complete = 1
+              AND (
+                e.player_id IN (SELECT player_id FROM game_rosters 
+                                WHERE game_id = g.id 
+                                AND side = CASE WHEN g.home_team_id = ? THEN 'home' ELSE 'guest' END)
+                OR (e.player_id IS NULL AND e.team_side = CASE WHEN g.home_team_id = ? THEN 'home' ELSE 'guest' END)
+              )
+        """, (team_id, team_id, team_id, team_id))
+        total_ab = c.fetchone()[0] or 0
+        season_abr = round(total_ab / total_fga * 100, 1)
+
     # Totals row
     game_table += f"""
         <tr style="font-weight:bold; background:#f2c74a; text-align:center;">
@@ -385,6 +425,7 @@ def generate_team_report(conn, team_id, full_code):
             <td>{total_dfl}</td>
             <td>{overall_tov_pct:.1f}%</td>
             <td>{avg_atr:.2f}</td>
+            <td>{season_abr:.1f}%</td>
         </tr>
     """
 
@@ -419,6 +460,7 @@ def generate_team_report(conn, team_id, full_code):
             <td>{round(total_blk / num_games, 1) if num_games > 0 else 0}</td>
             <td>{round(total_chg / num_games, 1) if num_games > 0 else 0}</td>
             <td>{round(total_dfl / num_games, 1) if num_games > 0 else 0}</td>
+            <td>-</td>
             <td>-</td>
             <td>-</td>
         </tr>
@@ -693,6 +735,7 @@ def generate_team_report(conn, team_id, full_code):
                 <th style="text-align:center;">CHG</th>
                 <th style="text-align:center;">DFL</th>
                 <th style="text-align:center;">ATR</th>
+                <th style="text-align:center;">ABR</th>
             </tr>
     """
 
@@ -772,6 +815,20 @@ def generate_team_report(conn, team_id, full_code):
 
         atr = round((ast / tov), 2) if tov > 0 else 0.0
 
+        # Player ABR (season)
+        player_abr = 0.0
+        if fga_total > 0:
+            c.execute("""
+                            SELECT SUM(CASE WHEN shot_quality IN ('A','B') THEN 1 ELSE 0 END)
+                            FROM events e
+                            JOIN videos v ON e.video_id = v.id
+                            JOIN games g ON v.game_id = g.id
+                            WHERE e.player_id = ?
+                              AND g.is_complete = 1
+                        """, (p_id,))
+            ab_shots = c.fetchone()[0] or 0
+            player_abr = round(ab_shots / fga_total * 100, 1)
+
         def fmt(val):
             if gp == 0:
                 return "0 (0.0)"
@@ -808,6 +865,7 @@ def generate_team_report(conn, team_id, full_code):
             <td style="text-align:center;">{fmt(chg)}</td>
             <td style="text-align:center;">{fmt(dfl)}</td>
             <td style="text-align:center;">{atr:.2f}</td>
+            <td style="text-align:center;">{player_abr:.1f}%</td>
         </tr>
         """
 
@@ -860,7 +918,8 @@ def generate_quarter_table(conn, game_id: int) -> str:
     query = """
         SELECT 
             e.type, e.quarter, e.team_side,
-            COALESCE(gr.side, e.team_side) AS effective_side
+            COALESCE(gr.side, e.team_side) AS effective_side,
+            e.shot_quality
         FROM events e
         JOIN videos v ON e.video_id = v.id
         LEFT JOIN game_rosters gr 
@@ -871,7 +930,7 @@ def generate_quarter_table(conn, game_id: int) -> str:
     events = c.fetchall()
 
     stat_keys = ['2PTM', '2PTA', '3PTM', '3PTA', 'FTM', 'FTA', 'ORB', 'DREB',
-                 'PFL', 'AST', 'TO', 'STL', 'BLK', 'CHG', 'DFL']
+                 'PFL', 'AST', 'TO', 'STL', 'BLK', 'CHG', 'DFL', 'ABR']
 
     def normalize_period(q):
         if not q: return "Q1"
@@ -886,7 +945,7 @@ def generate_quarter_table(conn, game_id: int) -> str:
     home_quarters = {p: {k: 0 for k in stat_keys} for p in period_order}
     guest_quarters = {p: {k: 0 for k in stat_keys} for p in period_order}
 
-    for e_type, quarter, t_side, effective_side in events:
+    for e_type, quarter, t_side, effective_side, shot_quality in events:
         if not e_type:
             continue
         side = effective_side if effective_side else t_side
@@ -915,6 +974,10 @@ def generate_quarter_table(conn, game_id: int) -> str:
         elif e_type.startswith("BLK"): target['BLK'] += 1
         elif e_type.startswith("CHG"): target['CHG'] += 1
         elif e_type.startswith("DFL"): target['DFL'] += 1
+        elif e_type.startswith("ABR"): target['ABR'] += 1
+        if e_type.startswith(('2PM', '3PM')) and shot_quality in ('A', 'B'):
+            target['ABR'] += 1
+
 
     # Build the HTML table
     quarter_table = """
@@ -933,6 +996,7 @@ def generate_quarter_table(conn, game_id: int) -> str:
             <th style='text-align: center;'>PFL</th><th style='text-align: center;'>AST</th><th style='text-align: center;'>TO</th>
             <th style='text-align: center;'>STL</th><th style='text-align: center;'>BLK</th>
             <th style='text-align: center;'>CHG</th><th style='text-align: center;'>DFL</th>
+            <th style='text-align: center;'>ABR</th>
             <th style='text-align: center;'>SCORE</th>
         </tr>
     """
@@ -973,6 +1037,19 @@ def generate_quarter_table(conn, game_id: int) -> str:
         g_ftf = round(g_fta / g_fga_total, 2) if g_fga_total > 0 else 0.0
         g_treb = g['ORB'] + g['DREB']
 
+        g_treb = g['ORB'] + g['DREB']
+
+        # ABR per quarter
+        h_abr = 0.0
+        h_fga_total = h_fga + h_three_a
+        if h_fga_total > 0:
+            h_abr = (h.get('ABR', 0) / h_fga_total * 100)
+
+        g_abr = 0.0
+        g_fga_total = g_fga + g_three_a
+        if g_fga_total > 0:
+            g_abr = (g.get('ABR', 0) / g_fga_total * 100)
+
         home_cum_pts += h_pts
         guest_cum_pts += g_pts
         display_period = period_labels.get(period_key, period_key)
@@ -991,6 +1068,7 @@ def generate_quarter_table(conn, game_id: int) -> str:
             <td style='text-align: center;'>{h['ORB']}</td><td style='text-align: center;'>{h['DREB']}</td><td style='text-align: center;'>{h_treb}</td>
             <td style='text-align: center;'>{h['PFL']}</td><td style='text-align: center;'>{h['AST']}</td><td style='text-align: center;'>{h['TO']}</td>
             <td style='text-align: center;'>{h['STL']}</td><td style='text-align: center;'>{h['BLK']}</td><td style='text-align: center;'>{h['CHG']}</td><td style='text-align: center;'>{h['DFL']}</td>
+            <td style='text-align: center;'>{h_abr:.1f}%</td>
             <td style='text-align: center;'>{home_cum_pts}</td>
         </tr>
         <tr style='background:#DCFFDC;'>
@@ -1005,6 +1083,7 @@ def generate_quarter_table(conn, game_id: int) -> str:
             <td style='text-align: center;'>{g['ORB']}</td><td style='text-align: center;'>{g['DREB']}</td><td style='text-align: center;'>{g_treb}</td>
             <td style='text-align: center;'>{g['PFL']}</td><td style='text-align: center;'>{g['AST']}</td><td style='text-align: center;'>{g['TO']}</td>
             <td style='text-align: center;'>{g['STL']}</td><td style='text-align: center;'>{g['BLK']}</td><td style='text-align: center;'>{g['CHG']}</td><td style='text-align: center;'>{g['DFL']}</td>
+            <td style='text-align: center;'>{g_abr:.1f}%</td>
             <td style='text-align: center;'>{guest_cum_pts}</td>
         </tr>
         """
@@ -1340,7 +1419,8 @@ def generate_game_report(conn, game_id: int) -> str:
             e.team_side, 
             p.number, 
             p.name,
-            COALESCE(gr.side, e.team_side) as effective_side
+            COALESCE(gr.side, e.team_side) as effective_side,
+            e.shot_quality
         FROM events e
         LEFT JOIN players p ON e.player_id = p.id
         LEFT JOIN game_rosters gr ON e.player_id = gr.player_id AND gr.game_id = ?
@@ -1374,8 +1454,11 @@ def generate_game_report(conn, game_id: int) -> str:
         location_counts = {}
         quarter_stats = {p: {k: 0 for k in stat_keys} for p in period_order}
 
+        team_ab_shots = 0
+        team_fga_total = 0
+
         for event in events:
-            e_type, loc, q, p_id, t_side, num, p_name, effective_side = event
+            e_type, loc, q, p_id, t_side, num, p_name, effective_side, shot_quality = event
             if effective_side != target_side:
                 continue
 
@@ -1461,6 +1544,7 @@ def generate_game_report(conn, game_id: int) -> str:
                 <th style='text-align: center;'>STL</th><th style='text-align: center;'>BLK</th>
                 <th style='text-align: center;'>CHG</th><th style='text-align: center;'>DFL</th>
                 <th style='text-align: center;'>ATR</th>
+                <th style='text-align: center;'>ABR</th>
             </tr>
         """
         row_colour = "#FFFFFF;"
@@ -1480,6 +1564,20 @@ def generate_game_report(conn, game_id: int) -> str:
             treb = stats['ORB'] + stats['DREB']
             atr = (stats['AST'] / stats['TO']) if stats['TO'] > 0 else 0.0
 
+            # === PLAYER ABR FOR THIS GAME ===
+            abr_game = 0.0
+            if fga_total > 0:
+                ab_count = sum(1 for e in events
+                               if e[3] == key
+                               and e[7] == target_side
+                               and len(e) > 8
+                               and e[8] in ('A', 'B'))
+                abr_game = (ab_count / fga_total * 100)
+            # =================================
+            # Accumulate for Team ABR
+            team_ab_shots += ab_count
+            team_fga_total += fga_total
+
             player_table += f"""
             <tr style='background:{row_colour}'>
                 <td style='text-align: center;'>{num}</td>
@@ -1495,6 +1593,7 @@ def generate_game_report(conn, game_id: int) -> str:
                 <td style='text-align: center;'>{stats['STL']}</td><td style='text-align: center;'>{stats['BLK']}</td>
                 <td style='text-align: center;'>{stats['CHG']}</td><td style='text-align: center;'>{stats['DFL']}</td>
                 <td style='text-align: center;'>{atr:.2f}</td>
+                <td style='text-align: center;'>{abr_game:.1f}%</td>
             </tr>
             """
             row_colour = "#DCFFDC;" if row_colour == "#FFFFFF;" else "#FFFFFF;"
@@ -1519,6 +1618,8 @@ def generate_game_report(conn, game_id: int) -> str:
 
         total_ftf = round((total_fta / total_fga), 2) if total_fga > 0 else 0.0
         total_atr = round((total['AST'] / total['TO']), 2) if total['TO'] > 0 else 0.0
+
+        team_abr = (team_ab_shots / team_fga_total * 100) if team_fga_total > 0 else 0.0
 
         player_table += f"""
             <tr style="font-weight:bold; background:#75c875; text-align:center;">
@@ -1546,6 +1647,7 @@ def generate_game_report(conn, game_id: int) -> str:
                 <td>{total['CHG']}</td>
                 <td>{total['DFL']}</td>
                 <td>{total_atr:.2f}</td>
+                <td>{team_abr:.1f}%</td>
             </tr>
         </table>
         """
@@ -1775,6 +1877,7 @@ def generate_player_report(conn, player_id: int) -> str:
                 <th>PTS</th><th>ORB</th><th>DREB</th><th>TREB</th>
                 <th>PFL</th><th>AST</th><th>TO</th><th>STL</th><th>BLK</th><th>CHG</th><th>DFL</th>
                 <th>ATR</th>
+                <th>ABR</th>
             </tr>
     """
 
@@ -1825,6 +1928,19 @@ def generate_player_report(conn, player_id: int) -> str:
         treb = oreb + dreb
         atr = round((ast / tov), 2) if tov > 0 else 0.0
 
+        # Player ABR for this game
+        abr_game = 0.0
+        if fga_total > 0:
+            c.execute("""
+                SELECT SUM(CASE WHEN shot_quality IN ('A','B') THEN 1 ELSE 0 END)
+                FROM events 
+                WHERE player_id = ? AND video_id IN (
+                    SELECT id FROM videos WHERE game_id = ?
+                )
+            """, (player_id, g_id))
+            ab_makes = c.fetchone()[0] or 0
+            abr_game = round(ab_makes / fga_total * 100, 1)
+
         game_table += f"""
         <tr style="background:{row_colour}; text-align:center;">
             <td style="text-align:left;">{g_date}</td>
@@ -1838,6 +1954,7 @@ def generate_player_report(conn, player_id: int) -> str:
             <td>{pts}</td><td>{oreb}</td><td>{dreb}</td><td>{treb}</td>
             <td>{pfl}</td><td>{ast}</td><td>{tov}</td><td>{stl}</td><td>{blk}</td><td>{chg}</td><td>{dfl}</td>
             <td>{atr:.2f}</td>
+            <td style="text-align:center;">{abr_game:.1f}%</td>
         </tr>
         """
 
@@ -1875,6 +1992,20 @@ def generate_player_report(conn, player_id: int) -> str:
     total_efg_pct = round((total_fgm_all + 0.5 * total_3pm) / total_fga_all * 100, 1) if total_fga_all > 0 else 0.0
     avg_atr = round(total_ast / total_tov, 2) if total_tov > 0 else 0.0
 
+    # Season ABR (overall for the player)
+    season_abr = 0.0
+    if total_fga_all > 0:
+        c.execute("""
+                SELECT SUM(CASE WHEN shot_quality IN ('A','B') THEN 1 ELSE 0 END)
+                FROM events e
+                JOIN videos v ON e.video_id = v.id
+                JOIN games g ON v.game_id = g.id
+                WHERE e.player_id = ?
+                  AND g.is_complete = 1
+            """, (player_id,))
+        total_ab_shots = c.fetchone()[0] or 0
+        season_abr = round(total_ab_shots / total_fga_all * 100, 1)
+
     game_table += f"""
         <tr style="font-weight:bold; background:#d0e0ff; text-align:center;">
             <td style="text-align:left;">Games Played:</td>
@@ -1888,6 +2019,7 @@ def generate_player_report(conn, player_id: int) -> str:
             <td>{total_pfl}</td><td>{total_ast}</td><td>{total_tov}</td>
             <td>{total_stl}</td><td>{total_blk}</td><td>{total_chg}</td><td>{total_dfl}</td>
             <td>{avg_atr:.2f}</td>
+            <td>{season_abr:.1f}%</td>
         </tr>
     </table>
     </div>
