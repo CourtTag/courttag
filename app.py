@@ -1566,6 +1566,7 @@ def generate_game_report(conn, game_id: int) -> str:
 
             # === PLAYER ABR FOR THIS GAME ===
             abr_game = 0.0
+            ab_count = 0
             if fga_total > 0:
                 ab_count = sum(1 for e in events
                                if e[3] == key
