@@ -123,10 +123,11 @@ SHOT_QUALITY = [
 
 
 VERSION = "1.0"
-BUILD = "b5"
-CT_BUILD = "b51"
+BUILD = "b6"
+CT_BUILD = "b52"
 
 
+#1.0b5 Added Custom Event Types to all Reporting
 #1.0b5 Added PTS, PPS, TPT%, TST%, ABR% to Shot Location Tables
 #1.0b4 Added ABR Numbers all reports.
 #1.0b3 Added YouTube URL (if any) to the game report header.
@@ -199,6 +200,19 @@ def generate_team_report(conn, team_id, full_code):
     if not games:
         return f"<h2>Team Report: {team_name}</h2><p>No complete games yet.</p>"
 
+    c.execute("""
+        SELECT DISTINCT cet.id, cet.code
+        FROM events e
+        JOIN videos v ON e.video_id = v.id
+        JOIN games g ON v.game_id = g.id
+        JOIN custom_event_types cet ON e.custom_event_id = cet.id
+        WHERE (g.home_team_id = ? OR g.guest_team_id = ?)
+          AND g.is_complete = 1
+          AND cet.active = 1
+        ORDER BY cet.sort_order, cet.code
+    """, (team_id, team_id))
+    custom_types = c.fetchall()
+
     # Initialize totals
     num_games = len(games)
     total_opts = total_pts = total_poss = 0
@@ -226,9 +240,12 @@ def generate_team_report(conn, team_id, full_code):
                 <th>PFL</th><th>AST</th><th>TO</th>
                 <th>STL</th><th>BLK</th><th>CHG</th><th>DFL</th>
                 <th>TOV%</th><th>ATR</th>
-                <th>ABR</th> 
-            </tr>
-    """
+                <th>ABR</th>"""
+
+    for cid, code in custom_types:
+        game_table += f"<th style='text-align: center;'>{code}</th>"
+
+    game_table += "</tr>"
 
     row_colour = "#FFEDB8;"
 
@@ -286,6 +303,23 @@ def generate_team_report(conn, team_id, full_code):
             ab_makes = c.fetchone()[0] or 0
             abr_game = round(ab_makes / fga_total * 100, 1)
 
+        custom_counts = {}
+        for cid, code in custom_types:
+            c.execute("""
+                SELECT COUNT(*)
+                FROM events e
+                JOIN videos v ON e.video_id = v.id
+                WHERE v.game_id = ?
+                  AND e.custom_event_id = ?
+                  AND (
+                        e.player_id IN (SELECT player_id FROM game_rosters WHERE game_id = ? AND side = ?)
+                     OR (e.player_id IS NULL AND e.team_side = ?)
+                  )
+            """, (g_id, cid, g_id, team_side, team_side))
+            custom_counts[cid] = c.fetchone()[0] or 0
+
+        # store custom_counts with the game data so you can use it when building the HTML
+
         game_link = scramble_id(g_id, "G")
 
         game_table += f"""
@@ -320,9 +354,13 @@ def generate_team_report(conn, team_id, full_code):
             <td style="text-align:center;">{dfl}</td>
             <td style="text-align:center;">{tov_pct:.1f}%</td>
             <td style="text-align:center;">{atr:.2f}</td>
-            <td style="text-align:center;">{abr_game:.1f}%</td>
-        </tr>
-        """
+            <td style="text-align:center;">{abr_game:.1f}%</td>"""
+
+        for cid, code in custom_types:
+            game_table += f"<td style='text-align: center;'>{custom_counts.get(cid, 0)}</td>"
+
+        game_table += "</tr>"
+
         row_colour = "#FFFFFF;" if row_colour == "#FFEDB8;" else "#FFEDB8;"
 
         # Accumulate totals
@@ -375,6 +413,9 @@ def generate_team_report(conn, team_id, full_code):
     # Season ABR (only this team's shots)
     total_fga = total_2pa + total_3pa
     season_abr = 0.0
+
+    total_custom = {cid: 0 for cid, code in custom_types}
+
     if total_fga > 0:
         c.execute("""
             SELECT SUM(CASE WHEN shot_quality IN ('A','B') THEN 1 ELSE 0 END)
@@ -426,9 +467,12 @@ def generate_team_report(conn, team_id, full_code):
             <td>{total_dfl}</td>
             <td>{overall_tov_pct:.1f}%</td>
             <td>{avg_atr:.2f}</td>
-            <td>{season_abr:.1f}%</td>
-        </tr>
-    """
+            <td>{season_abr:.1f}%</td>"""
+
+    for cid, code in custom_types:
+        game_table += f"<td style='text-align: center;'>{total_custom.get(cid, 0)}</td>"
+
+    game_table += "</tr>"
 
     # Averages row
     game_table += f"""
@@ -463,10 +507,12 @@ def generate_team_report(conn, team_id, full_code):
             <td>{round(total_dfl / num_games, 1) if num_games > 0 else 0}</td>
             <td>-</td>
             <td>-</td>
-            <td>-</td>
-        </tr>
-    """
+            <td>-</td>"""
+    for cid, code in custom_types:
+        avg = total_custom.get(cid, 0) / num_games if num_games > 0 else 0.0
+        game_table += f"<td style='text-align: center;'>{avg:.1f}</td>"
 
+    game_table += "</tr>"
     game_table += "</table></div>"
 
     # === SHOT LOCATIONS ===
