@@ -1014,7 +1014,8 @@ def generate_quarter_table(conn, game_id: int) -> str:
         SELECT 
             e.type, e.quarter, e.team_side,
             COALESCE(gr.side, e.team_side) AS effective_side,
-            e.shot_quality
+            e.shot_quality,
+            e.custom_event_id
         FROM events e
         JOIN videos v ON e.video_id = v.id
         LEFT JOIN game_rosters gr 
@@ -1023,6 +1024,17 @@ def generate_quarter_table(conn, game_id: int) -> str:
     """
     c.execute(query, (game_id,))
     events = c.fetchall()
+
+    c.execute("""
+        SELECT DISTINCT cet.id, cet.code
+        FROM events e
+        JOIN videos v ON e.video_id = v.id
+        JOIN custom_event_types cet ON e.custom_event_id = cet.id
+        WHERE v.game_id = ?
+          AND cet.active = 1
+        ORDER BY cet.sort_order, cet.code
+    """, (game_id,))
+    custom_types = c.fetchall()
 
     stat_keys = ['2PTM', '2PTA', '3PTM', '3PTA', 'FTM', 'FTA', 'ORB', 'DREB',
                  'PFL', 'AST', 'TO', 'STL', 'BLK', 'CHG', 'DFL', 'ABR']
@@ -1040,7 +1052,7 @@ def generate_quarter_table(conn, game_id: int) -> str:
     home_quarters = {p: {k: 0 for k in stat_keys} for p in period_order}
     guest_quarters = {p: {k: 0 for k in stat_keys} for p in period_order}
 
-    for e_type, quarter, t_side, effective_side, shot_quality in events:
+    for e_type, quarter, t_side, effective_side, shot_quality, custom_event_id in events:
         if not e_type:
             continue
         side = effective_side if effective_side else t_side
@@ -1073,6 +1085,11 @@ def generate_quarter_table(conn, game_id: int) -> str:
         if e_type.startswith(('2PM', '3PM')) and shot_quality in ('A', 'B'):
             target['ABR'] += 1
 
+        if custom_event_id:
+            if 'custom' not in target:
+                target['custom'] = {}
+            target['custom'][custom_event_id] = target['custom'].get(custom_event_id, 0) + 1
+
 
     # Build the HTML table
     quarter_table = """
@@ -1092,9 +1109,10 @@ def generate_quarter_table(conn, game_id: int) -> str:
             <th style='text-align: center;'>STL</th><th style='text-align: center;'>BLK</th>
             <th style='text-align: center;'>CHG</th><th style='text-align: center;'>DFL</th>
             <th style='text-align: center;'>ABR</th>
-            <th style='text-align: center;'>SCORE</th>
-        </tr>
-    """
+            <th style='text-align: center;'>SCORE</th>"""
+    for cid, code in custom_types:
+        quarter_table += f"<th style='text-align: center;'>{code}</th>"
+    quarter_table += "</tr>"
 
     home_cum_pts = guest_cum_pts = 0
 
@@ -1164,7 +1182,11 @@ def generate_quarter_table(conn, game_id: int) -> str:
             <td style='text-align: center;'>{h['PFL']}</td><td style='text-align: center;'>{h['AST']}</td><td style='text-align: center;'>{h['TO']}</td>
             <td style='text-align: center;'>{h['STL']}</td><td style='text-align: center;'>{h['BLK']}</td><td style='text-align: center;'>{h['CHG']}</td><td style='text-align: center;'>{h['DFL']}</td>
             <td style='text-align: center;'>{h_abr:.1f}%</td>
-            <td style='text-align: center;'>{home_cum_pts}</td>
+            <td style='text-align: center;'>{home_cum_pts}</td>"""
+        for cid, code in custom_types:
+            quarter_table += f"<td style='text-align: center;'>{h.get('custom', {}).get(cid, 0)}</td>"
+
+        quarter_table += f"""
         </tr>
         <tr style='background:#DCFFDC;'>
             <td>Guest</td>
@@ -1179,9 +1201,10 @@ def generate_quarter_table(conn, game_id: int) -> str:
             <td style='text-align: center;'>{g['PFL']}</td><td style='text-align: center;'>{g['AST']}</td><td style='text-align: center;'>{g['TO']}</td>
             <td style='text-align: center;'>{g['STL']}</td><td style='text-align: center;'>{g['BLK']}</td><td style='text-align: center;'>{g['CHG']}</td><td style='text-align: center;'>{g['DFL']}</td>
             <td style='text-align: center;'>{g_abr:.1f}%</td>
-            <td style='text-align: center;'>{guest_cum_pts}</td>
-        </tr>
-        """
+            <td style='text-align: center;'>{guest_cum_pts}</td>"""
+        for cid, code in custom_types:
+            quarter_table += f"<td style='text-align: center;'>{g.get('custom', {}).get(cid, 0)}</td>"
+        quarter_table += "</tr>"
 
     quarter_table += "</table><br>"
     return quarter_table
@@ -1773,7 +1796,7 @@ def generate_game_report(conn, game_id: int) -> str:
             player_table += f"<td style='text-align: center;'>{team_count}</td>"
 
         player_table += "</tr></table>"
-        
+
         # Exact desktop totals + possession
         total = {k: sum(s[k] for s in player_stats.values()) for k in stat_keys}
         total_fga = total['2PTM'] + total['2PTA']
