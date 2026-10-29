@@ -1515,7 +1515,8 @@ def generate_game_report(conn, game_id: int) -> str:
             p.number, 
             p.name,
             COALESCE(gr.side, e.team_side) as effective_side,
-            e.shot_quality
+            e.shot_quality,
+            e.custom_event_id
         FROM events e
         LEFT JOIN players p ON e.player_id = p.id
         LEFT JOIN game_rosters gr ON e.player_id = gr.player_id AND gr.game_id = ?
@@ -1525,6 +1526,17 @@ def generate_game_report(conn, game_id: int) -> str:
     """
     c.execute(query, (game_id, game_id))
     events = c.fetchall()
+
+    c.execute("""
+        SELECT DISTINCT cet.id, cet.code
+        FROM events e
+        JOIN videos v ON e.video_id = v.id
+        JOIN custom_event_types cet ON e.custom_event_id = cet.id
+        WHERE v.game_id = ?
+          AND cet.active = 1
+        ORDER BY cet.sort_order, cet.code
+    """, (game_id,))
+    custom_types = c.fetchall()
 
     if format_ == "H":
         period_order = ["H1", "H2", "OT1", "OT2"]
@@ -1553,7 +1565,7 @@ def generate_game_report(conn, game_id: int) -> str:
         team_fga_total = 0
 
         for event in events:
-            e_type, loc, q, p_id, t_side, num, p_name, effective_side, shot_quality = event
+            e_type, loc, q, p_id, t_side, num, p_name, effective_side, shot_quality, custom_event_id = event
             if effective_side != target_side:
                 continue
 
@@ -1617,6 +1629,11 @@ def generate_game_report(conn, game_id: int) -> str:
                 stats['DFL'] += 1
                 q_stats['DFL'] += 1
 
+            if custom_event_id:
+                if 'custom' not in stats:
+                    stats['custom'] = {}
+                stats['custom'][custom_event_id] = stats['custom'].get(custom_event_id, 0) + 1
+
             if loc and loc != '-' and e_type.startswith(('2PA', '2PM', '3PA', '3PM')):
                 if loc not in location_counts:
                     location_counts[loc] = {}
@@ -1641,9 +1658,11 @@ def generate_game_report(conn, game_id: int) -> str:
                 <th style='text-align: center;'>STL</th><th style='text-align: center;'>BLK</th>
                 <th style='text-align: center;'>CHG</th><th style='text-align: center;'>DFL</th>
                 <th style='text-align: center;'>ATR</th>
-                <th style='text-align: center;'>ABR</th>
-            </tr>
-        """
+                <th style='text-align: center;'>ABR</th>"""
+        for cid, code in custom_types:
+            player_table += f"<th style='text-align: center;'>{code}</th>"
+        player_table += "</tr>"
+
         row_colour = "#FFFFFF;"
         for key, stats in sorted(player_stats.items(), key=lambda x: (int(x[1]['number'] or 999) if str(x[1]['number']).strip().isdigit() else 999, x[1]['name'])):
             num = str(stats['number']) if stats['number'] is not None else ''
@@ -1691,9 +1710,12 @@ def generate_game_report(conn, game_id: int) -> str:
                 <td style='text-align: center;'>{stats['STL']}</td><td style='text-align: center;'>{stats['BLK']}</td>
                 <td style='text-align: center;'>{stats['CHG']}</td><td style='text-align: center;'>{stats['DFL']}</td>
                 <td style='text-align: center;'>{atr:.2f}</td>
-                <td style='text-align: center;'>{abr_game:.1f}%</td>
-            </tr>
-            """
+                <td style='text-align: center;'>{abr_game:.1f}%</td>"""
+            for cid, code in custom_types:
+                count = stats.get('custom', {}).get(cid, 0)
+                player_table += f"<td style='text-align: center;'>{count}</td>"
+
+            player_table += "</tr>"
             row_colour = "#DCFFDC;" if row_colour == "#FFFFFF;" else "#FFFFFF;"
 
         # ====================== TOTALS ROW (Missing Summary) ======================
@@ -1745,11 +1767,13 @@ def generate_game_report(conn, game_id: int) -> str:
                 <td>{total['CHG']}</td>
                 <td>{total['DFL']}</td>
                 <td>{total_atr:.2f}</td>
-                <td>{team_abr:.1f}%</td>
-            </tr>
-        </table>
-        """
+                <td>{team_abr:.1f}%</td>"""
+        for cid, code in custom_types:
+            team_count = sum(s.get('custom', {}).get(cid, 0) for s in player_stats.values())
+            player_table += f"<td style='text-align: center;'>{team_count}</td>"
 
+        player_table += "</tr></table>"
+        
         # Exact desktop totals + possession
         total = {k: sum(s[k] for s in player_stats.values()) for k in stat_keys}
         total_fga = total['2PTM'] + total['2PTA']
