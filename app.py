@@ -249,6 +249,8 @@ def generate_team_report(conn, team_id, full_code):
 
     row_colour = "#FFEDB8;"
 
+    total_custom = {cid: 0 for cid, code in custom_types}
+
     for g_id, date, g_name, opponent, team_side in games:
         # Team points
         c.execute("""SELECT SUM(CASE WHEN e.type LIKE '2PM%' THEN 2 WHEN e.type LIKE '3PM%' THEN 3 WHEN e.type LIKE 'FTM%' THEN 1 ELSE 0 END) FROM events e JOIN videos v ON e.video_id = v.id WHERE v.game_id = ? AND ((e.player_id IN (SELECT player_id FROM game_rosters WHERE game_id = ? AND side = ?)) OR (e.player_id IS NULL AND e.team_side = ?))""", (g_id, g_id, team_side, team_side))
@@ -319,6 +321,8 @@ def generate_team_report(conn, team_id, full_code):
             custom_counts[cid] = c.fetchone()[0] or 0
 
         # store custom_counts with the game data so you can use it when building the HTML
+        for cid, code in custom_types:
+            total_custom[cid] += custom_counts.get(cid, 0)
 
         game_link = scramble_id(g_id, "G")
 
@@ -413,8 +417,6 @@ def generate_team_report(conn, team_id, full_code):
     # Season ABR (only this team's shots)
     total_fga = total_2pa + total_3pa
     season_abr = 0.0
-
-    total_custom = {cid: 0 for cid, code in custom_types}
 
     if total_fga > 0:
         c.execute("""
