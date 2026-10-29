@@ -814,9 +814,10 @@ def generate_team_report(conn, team_id, full_code):
                 <th style="text-align:center;">CHG</th>
                 <th style="text-align:center;">DFL</th>
                 <th style="text-align:center;">ATR</th>
-                <th style="text-align:center;">ABR</th>
-            </tr>
-    """
+                <th style="text-align:center;">ABR</th>"""
+    for cid, code in custom_types:
+        player_table += f"<th style='text-align: center;'>{code}</th>"
+    player_table += "</tr>"
 
     c.execute("""
         SELECT p.id, p.number, p.name
@@ -908,6 +909,19 @@ def generate_team_report(conn, team_id, full_code):
             ab_shots = c.fetchone()[0] or 0
             player_abr = round(ab_shots / fga_total * 100, 1)
 
+        player_custom = {}
+        for cid, code in custom_types:
+            c.execute("""
+                SELECT COUNT(*)
+                FROM events e
+                JOIN videos v ON e.video_id = v.id
+                JOIN games g ON v.game_id = g.id
+                WHERE e.player_id = ?
+                  AND e.custom_event_id = ?
+                  AND g.is_complete = 1
+            """, (p_id, cid))
+            player_custom[cid] = c.fetchone()[0] or 0
+
         def fmt(val):
             if gp == 0:
                 return "0 (0.0)"
@@ -944,9 +958,11 @@ def generate_team_report(conn, team_id, full_code):
             <td style="text-align:center;">{fmt(chg)}</td>
             <td style="text-align:center;">{fmt(dfl)}</td>
             <td style="text-align:center;">{atr:.2f}</td>
-            <td style="text-align:center;">{player_abr:.1f}%</td>
-        </tr>
-        """
+            <td style="text-align:center;">{player_abr:.1f}%</td>"""
+        for cid, code in custom_types:
+            count = player_custom.get(cid, 0)
+            player_table += f"<td style='text-align: center;'>{fmt(count)}</td>"
+        player_table += "</tr>"
 
         row_colour = "#FFEDB8;" if row_colour == "#FFFFFF;" else "#FFFFFF;"
 
