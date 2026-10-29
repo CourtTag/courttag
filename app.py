@@ -1975,6 +1975,19 @@ def generate_player_report(conn, player_id: int) -> str:
     """, (player_id,))
     games = c.fetchall()
 
+    c.execute("""
+        SELECT DISTINCT cet.id, cet.code
+        FROM events e
+        JOIN videos v ON e.video_id = v.id
+        JOIN games g ON v.game_id = g.id
+        JOIN custom_event_types cet ON e.custom_event_id = cet.id
+        WHERE e.player_id = ?
+          AND g.is_complete = 1
+          AND cet.active = 1
+        ORDER BY cet.sort_order, cet.code
+    """, (player_id,))
+    custom_types = c.fetchall()
+
     num_games = len(games)
     if num_games == 0:
         report += "<p><i>No complete games played by this player yet.</i></p>"
@@ -1997,13 +2010,16 @@ def generate_player_report(conn, player_id: int) -> str:
                 <th>PTS</th><th>ORB</th><th>DREB</th><th>TREB</th>
                 <th>PFL</th><th>AST</th><th>TO</th><th>STL</th><th>BLK</th><th>CHG</th><th>DFL</th>
                 <th>ATR</th>
-                <th>ABR</th>
-            </tr>
-    """
+                <th>ABR</th>"""
+    for cid, code in custom_types:
+        game_table += f"<th style='text-align: center;'>{code}</th>"
+    game_table += "</tr>"
 
     row_colour = "#FFFFFF;"
     total_pts = total_2pm = total_2pa = total_3pm = total_3pa = total_ftm = total_fta = 0
     total_orb = total_dreb = total_treb = total_pfl = total_ast = total_tov = total_stl = total_blk = total_chg = total_dfl = 0
+
+    total_custom = {cid: 0 for cid, code in custom_types}
 
     for g_date, g_name, opponent, g_id in games:
         c.execute("""
@@ -2061,6 +2077,18 @@ def generate_player_report(conn, player_id: int) -> str:
             ab_makes = c.fetchone()[0] or 0
             abr_game = round(ab_makes / fga_total * 100, 1)
 
+        custom_counts = {}
+        for cid, code in custom_types:
+            c.execute("""
+                SELECT COUNT(*)
+                FROM events e
+                JOIN videos v ON e.video_id = v.id
+                WHERE e.player_id = ?
+                  AND v.game_id = ?
+                  AND e.custom_event_id = ?
+            """, (player_id, g_id, cid))
+            custom_counts[cid] = c.fetchone()[0] or 0
+
         game_table += f"""
         <tr style="background:{row_colour}; text-align:center;">
             <td style="text-align:left;">{g_date}</td>
@@ -2074,9 +2102,10 @@ def generate_player_report(conn, player_id: int) -> str:
             <td>{pts}</td><td>{oreb}</td><td>{dreb}</td><td>{treb}</td>
             <td>{pfl}</td><td>{ast}</td><td>{tov}</td><td>{stl}</td><td>{blk}</td><td>{chg}</td><td>{dfl}</td>
             <td>{atr:.2f}</td>
-            <td style="text-align:center;">{abr_game:.1f}%</td>
-        </tr>
-        """
+            <td style="text-align:center;">{abr_game:.1f}%</td>"""
+        for cid, code in custom_types:
+            game_table += f"<td style='text-align: center;'>{custom_counts.get(cid, 0)}</td>"
+        game_table += "</tr>"
 
         if row_colour == "#FFFFFF;":
             row_colour = "#e9f0f0;"
@@ -2126,6 +2155,9 @@ def generate_player_report(conn, player_id: int) -> str:
         total_ab_shots = c.fetchone()[0] or 0
         season_abr = round(total_ab_shots / total_fga_all * 100, 1)
 
+    for cid, code in custom_types:
+        total_custom[cid] += custom_counts.get(cid, 0)
+
     game_table += f"""
         <tr style="font-weight:bold; background:#d0e0ff; text-align:center;">
             <td style="text-align:left;">Games Played:</td>
@@ -2139,11 +2171,11 @@ def generate_player_report(conn, player_id: int) -> str:
             <td>{total_pfl}</td><td>{total_ast}</td><td>{total_tov}</td>
             <td>{total_stl}</td><td>{total_blk}</td><td>{total_chg}</td><td>{total_dfl}</td>
             <td>{avg_atr:.2f}</td>
-            <td>{season_abr:.1f}%</td>
-        </tr>
-    </table>
-    </div>
-    """
+            <td>{season_abr:.1f}%</td>"""
+    for cid, code in custom_types:
+        game_table += f"<td style='text-align: center;'>{total_custom.get(cid, 0)}</td>"
+
+    game_table += "</tr></table></div>"
 
     # ====================== SHOT LOCATIONS ======================
     c.execute("""
