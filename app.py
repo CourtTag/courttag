@@ -1235,8 +1235,15 @@ def _generate_simple_highlights_html(conn, game_id: int, team_side: str, team_la
     else:
         video_id = youtube_url.split("/")[-1]
 
-    # Get highlights
-    c.execute("""
+    # === Check if coach_note column exists (backwards compatibility) ===
+    c.execute("PRAGMA table_info(events)")
+    event_columns = [info[1] for info in c.fetchall()]
+    has_coach_note = "coach_note" in event_columns
+
+    # Build SELECT dynamically so old databases don't break
+    note_select = ", e.coach_note" if has_coach_note else ""
+
+    c.execute(f"""
         SELECT 
             e.time_ms,
             e.quarter,
@@ -1245,8 +1252,8 @@ def _generate_simple_highlights_html(conn, game_id: int, team_side: str, team_la
             e.type,
             e.location,
             e.shot_quality,
-            e.player_id,
-            e.coach_note
+            e.player_id
+            {note_select}
         FROM events e
         JOIN videos v ON e.video_id = v.id
         LEFT JOIN players p ON e.player_id = p.id
@@ -1291,7 +1298,9 @@ def _generate_simple_highlights_html(conn, game_id: int, team_side: str, team_la
         event_type = ev[4] or ""
         location_code = (ev[5] or "")[:3].strip() if ev[5] else ""
         quality = ev[6] or ""
-        coach_note = (ev[8] or "").strip()
+
+        # coach_note is only present when the column exists
+        coach_note = (ev[8] or "").strip() if has_coach_note else ""
 
         extra = ""
         if location_code or quality:
@@ -1300,7 +1309,7 @@ def _generate_simple_highlights_html(conn, game_id: int, team_side: str, team_la
 
         link = f"https://youtu.be/{video_id}?t={adjusted_sec}"
 
-        # Full note (basic HTML escape)
+        # Full note (basic HTML escape) — only shown when present
         note_html = ""
         if coach_note:
             safe_note = coach_note.replace("<", "&lt;").replace(">", "&gt;")
