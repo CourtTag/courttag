@@ -2492,11 +2492,119 @@ def generate_player_report(conn, player_id: int) -> str:
     report += "<br>"
     report += loc_table
 
+    highlights_html = _generate_player_highlights_html(conn, player_id)
+    report += highlights_html
+
     # Back link
     report += f'<p><a href="?code={st.query_params.get("code", "")}" style="color:#0066cc; font-size:18px;">← Back to Team Report</a></p>'
 
     return report
 
+def _generate_player_highlights_html(conn, player_id: int) -> str:
+    """YouTube highlight links for a single player (Streamlit version).
+    Sorted by game, includes full coach notes when present.
+    Fully backwards-compatible with older databases.
+    """
+    c = conn.cursor()
+
+    # --- Backwards-compatibility checks ---
+    c.execute("PRAGMA table_info(games)")
+    game_cols = [info[1] for info in c.fetchall()]
+    has_youtube = "youtube_url" in game_cols
+
+    c.execute("PRAGMA table_info(events)")
+    event_cols = [info[1] for info in c.fetchall()]
+    has_coach_note = "coach_note" in event_cols
+
+    if not has_youtube:
+        return ""
+
+    note_select = ", e.coach_note" if has_coach_note else ""
+
+    c.execute(f"""
+        SELECT 
+            g.id,
+            g.date,
+            home.name AS home_name,
+            guest.name AS guest_name,
+            g.youtube_url,
+            e.time_ms,
+            e.quarter,
+            COALESCE(cet.code, e.type) AS event_type,
+            e.location,
+            e.shot_quality
+            {note_select}
+        FROM events e
+        JOIN videos v ON e.video_id = v.id
+        JOIN games g ON v.game_id = g.id
+        LEFT JOIN teams home ON g.home_team_id = home.id
+        LEFT JOIN teams guest ON g.guest_team_id = guest.id
+        LEFT JOIN custom_event_types cet ON e.custom_event_id = cet.id
+        WHERE e.player_id = ?
+          AND e.is_highlight = 1
+          AND g.youtube_url IS NOT NULL
+          AND g.youtube_url != ''
+        ORDER BY g.date, home_name, guest_name, e.time_ms
+    """, (player_id,))
+
+    rows = c.fetchall()
+
+    if not rows:
+        return ""
+
+    html = """
+    <h3 style="margin-top:20px;">Highlighted Events (YouTube Links)</h3>
+    <table border="0" cellpadding="2" cellspacing="2">
+    """
+
+    for r in rows:
+        game_date = r[1] or ""
+        home_name = r[2] or "Home"
+        guest_name = r[3] or "Guest"
+        youtube_url = r[4]
+        time_ms = r[5]
+        quarter = r[6] or ""
+        event_type = r[7] or ""
+        location = (r[8] or "")[:3].strip()
+        quality = r[9] or ""
+        # Only read coach_note when the column exists
+        coach_note = (r[10] or "").strip() if has_coach_note else ""
+
+        game_name = f"{game_date} {home_name} vs {guest_name}" if game_date else f"{home_name} vs {guest_name}"
+
+        # Extract video ID
+        if "v=" in youtube_url:
+            video_id = youtube_url.split("v=")[-1].split("&")[0]
+        else:
+            video_id = youtube_url.split("/")[-1]
+
+        seconds = time_ms // 1000
+        adjusted_sec = max(0, seconds - 5)
+        time_display = f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+        extra_parts = [p for p in [location, quality] if p]
+        extra = f" ({' - '.join(extra_parts)})" if extra_parts else ""
+
+        link = f"https://youtu.be/{video_id}?t={adjusted_sec}"
+
+        note_html = ""
+        if coach_note:
+            safe_note = coach_note.replace("<", "&lt;").replace(">", "&gt;")
+            note_html = f"<br><span style='font-weight:normal; color:#333;'>Note: {safe_note}</span>"
+
+        html += f"""
+        <tr>
+            <td>
+                <a href="{link}" target="_blank" style="color:#0066cc; text-decoration:none; font-weight:bold;">
+                    ▶ <strong>{game_name}</strong> - {time_display} - {quarter} - {event_type}{extra}
+                </a>
+                {note_html}
+            </td>
+        </tr>
+        """
+
+    html += "</table>"
+    return html
 
 # ====================== REPORT LOADING ======================
 game_code = st.query_params.get("g")
