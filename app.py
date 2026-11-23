@@ -123,11 +123,11 @@ SHOT_QUALITY = [
 
 
 VERSION = "1.0"
-BUILD = "b6"
-CT_BUILD = "b52"
+BUILD = "b7"
+CT_BUILD = "b53"
 
-
-#1.0b5 Added Custom Event Types to all Reporting
+#1.0b7 Added Coaches Notes to Highlighted Event Tags
+#1.0b6 Added Custom Event Types to all Reporting
 #1.0b5 Added PTS, PPS, TPT%, TST%, ABR% to Shot Location Tables
 #1.0b4 Added ABR Numbers all reports.
 #1.0b3 Added YouTube URL (if any) to the game report header.
@@ -1245,7 +1245,8 @@ def _generate_simple_highlights_html(conn, game_id: int, team_side: str, team_la
             e.type,
             e.location,
             e.shot_quality,
-            e.player_id
+            e.player_id,
+            e.coach_note
         FROM events e
         JOIN videos v ON e.video_id = v.id
         LEFT JOIN players p ON e.player_id = p.id
@@ -1290,6 +1291,7 @@ def _generate_simple_highlights_html(conn, game_id: int, team_side: str, team_la
         event_type = ev[4] or ""
         location_code = (ev[5] or "")[:3].strip() if ev[5] else ""
         quality = ev[6] or ""
+        coach_note = (ev[8] or "").strip()
 
         extra = ""
         if location_code or quality:
@@ -1298,12 +1300,19 @@ def _generate_simple_highlights_html(conn, game_id: int, team_side: str, team_la
 
         link = f"https://youtu.be/{video_id}?t={adjusted_sec}"
 
+        # Full note (basic HTML escape)
+        note_html = ""
+        if coach_note:
+            safe_note = coach_note.replace("<", "&lt;").replace(">", "&gt;")
+            note_html = f"<br><span style='font-weight:normal; color:#333;'>Note: {safe_note}</span>"
+
         html += f"""
         <tr style='background:{row_colour}'><td>
                 <a href="{link}" target="_blank" style="color:#0066cc; text-decoration:none; font-weight:bold;"> ▶ 
                     <strong>{time_display}</strong>- {quarter} - 
                     {player} - {event_type}{extra}
                 </a>
+                {note_html}
             </td></tr>
         """
         if row_colour == "#FFFFFF;":
